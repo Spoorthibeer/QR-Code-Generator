@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Excel to QR Code Printer</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        @media print {
+            @page {
+                margin: 0mm;
+                display: block;
+            }
+
+            .page-break {
+                page-break-after: always;
+            }
+
+            .print-container {
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                page-break-after: always;
+            }
+        }
+
+        .error-message {
+            color: red;
+        }
+    </style>
+</head>
+
+<body>
+<h1>Excel to QR Code Printer</h1>
+<input type="file" id="excelFile" accept=".xlsx, .xls">
+<button onclick="processExcelAndPrint()">Print QR Codes</button>
+<div id="errorContainer" class="error-message"></div>
+
+<script>
+    function processExcelAndPrint() {
+        const excelFile = document.getElementById('excelFile').files[0];
+        const errorContainer = document.getElementById('errorContainer');
+
+        if (!excelFile) {
+            errorContainer.textContent = "Please select an Excel file.";
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {
+                    type: 'array'
+                });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const excelData = XLSX.utils.sheet_to_json(worksheet, {
+                    header: 1
+                });
+
+                console.log("Raw Excel Data:", excelData);
+
+                // Remove the first row (header row)
+                const dataWithoutHeader = excelData.slice(1);
+
+                generateQRAndPrint(dataWithoutHeader);
+
+            } catch (ex) {
+                console.error(ex);
+                errorContainer.textContent = "Error reading or parsing Excel file.";
+            }
+        };
+
+        reader.onerror = function(ex) {
+            console.error(ex);
+            errorContainer.textContent = "Error reading Excel file.";
+        };
+
+        reader.readAsArrayBuffer(excelFile);
+    }
+
+    function formatDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${day}-${month}-${year}`;
+    }
+
+    function generateQRAndPrint(excelData) {
+        console.log("Data received for QR generation:", excelData);
+
+        var printWindow = window.open('', '', 'height=600,width=800');
+        printWindow.document.write('<html><head><title>QR Codes</title>');
+        printWindow.document.write('<style>@media print { @page {  margin: 0mm;display:block; } .page-break { page-break-after: always; } .print-container { display: flex;  flex-direction: column; justify-content: space-between;page-break-after:always;}   }</style>');
+        printWindow.document.write('</head><body>');
+
+        const printingDate = formatDate(new Date()); // Get current date
+
+        for (let i = 0; i < excelData.length; i++) {
+            const row = excelData[i];
+
+            console.log("Processing row:", row);
+
+            //  *** VERY IMPORTANT:  ADJUST THESE INDICES TO MATCH YOUR EXCEL FILE  ***
+            const proj = row[0] || '';
+            const stock = row[1] || '';
+            const card_type = row[2] || '';
+            const mdb_partno = row[3] || '';
+            const card_no = row[4] || '';
+            const date_code = row[5] || '';
+            const exp_date = row[6] || '';
+            const qty = row[7] || '';
+            const mfr = row[8] || '';
+            const srv_no = row[9] || '';
+            const srvdate = row[10] || '';
+
+            const selectedRowData = `${proj},${stock},${card_type},${mdb_partno},${card_no},${date_code},${exp_date},${qty},${mfr},${srv_no},${srvdate}`;
+            const qrData = selectedRowData;
+
+            const canvas = document.createElement('canvas');
+            const qr = new QRious({
+                element: canvas,
+                value: qrData,
+                size: 100
+            });
+
+            setTimeout(() => {
+                const printRowData = (`
+                    <table>
+                        <tr style="text-decoration: underline;">
+                            <td><center><b><span style="font-size:8pt;">ICSDBS-3</span></b></center></td>
+                            <td><center><b>${proj} : ${stock}</b></center></td>
+                        </tr>
+                        <tr>
+                            <td><span style="margin-left:5pt;">MDB PARTNO :</span></td>
+                            <td> <span style="float:right">TYPE : <b> ${card_type} </b></span></td>
+                        </tr>
+                        <tr>
+                            <td colspan=2><span style="margin-left:5pt;font-size:12pt;"><strong> <u>${mdb_partno}</u></strong></span></td>
+                        </tr>
+                        <tr>
+                            <td colspan=2><span style="margin-left:5pt;font-size:8pt;">MFR </span> <span style="font-size:8pt;margin-left:37pt;">: </span><span style="font-size:8pt;"> <b> ${mfr}</b></span></td>
+                        </tr>
+                        <tr>
+                            <td><img src="${canvas.toDataURL()}" style="width:100px;height:100px;"/></td>
+                            <td>
+                                <table>
+                                    <tr><td style="padding-top:0pt;">QTY :<b> ${qty} </b></td></tr>
+                                    <tr><td style="padding-top:0pt;">DATE CODE :<b> ${date_code} </b></td></tr>
+                                    <tr><td style="padding-top:0pt;">EXP DATE : <b> ${exp_date} </b></td></tr>
+                                    <tr><td  style="padding-top:0pt;font-size:15pt"><strong><u>CARDEX: </u><span style=" margin-left:4pt;margin-top:8pt;outline: 2px solid black; outline-offset: 2pt;"><b> ${card_no}</b></span> </strong></td></tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan=2><span style="margin-left:5pt;">SRV No : <b> ${srv_no}</b></span><span style="margin-left:5pt;">DATE : <b> ${srvdate}</b></span> <span style="margin-left:15pt;">${printingDate}</span></td>
+                        </tr>
+                    </table>
+                `);
+
+                printWindow.document.write('<div class="print-container">');
+                printWindow.document.write(`<table id="print_table_${i}" class="print-item" cellspacing="0"><thead></thead><tbody id="print_table_tbody_id_${i}" ><tr><td>${printRowData}</td></tr></tbody></table>`);
+                printWindow.document.write('</div>');
+
+                if (i === excelData.length - 1) {
+                    printWindow.document.write('</body></html>');
+                    printWindow.document.close();
+                    printWindow.print();
+                }
+            }, 10);
+        }
+
+        if (excelData.length === 0) {
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+        }
+    }
+</script>
+</body>
+
+</html>
